@@ -107,6 +107,12 @@ class TestPipeline(unittest.TestCase):
         )
         self.assertIn("{თანხა}", brain_mine.templatize("ჯამში 320 ლარი"))
 
+    def test_brain_masks_bank_account(self):
+        # An IBAN must never survive into a reusable template.
+        out = brain_mine.templatize("ანგარიში GE59TB7353845064300106")
+        self.assertNotIn("GE59TB7353845064300106", out)
+        self.assertIn("{ანგარიში}", out)
+
     def test_brain_finds_repeats(self):
         mined = brain_mine.mine(self.threads)
         self.assertTrue(mined["questions"])

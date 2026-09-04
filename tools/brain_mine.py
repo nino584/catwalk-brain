@@ -19,6 +19,8 @@ MAX_ITEMS = 40
 
 # Parts of an answer that change every time become template variables.
 VARIABLE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # Bank details first: an IBAN must never survive into a reusable template.
+    (re.compile(r"\bGE\d{2}[A-Z]{2}\d{14,18}\b"), "{ანგარიში}"),
     (re.compile(r"\b\d{1,3}[.,]\d+\s*(?:კგ|kg)\b", re.IGNORECASE), "{წონა}"),
     (re.compile(r"\b\d+\s*(?:ლარ|₾|gel)\w*", re.IGNORECASE), "{თანხა}"),
     (re.compile(r"\b[A-Z]{2}\d{6,}[A-Z]{0,2}\b"), "{ტრეკინგი}"),
