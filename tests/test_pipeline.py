@@ -116,6 +116,60 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(out.exists())
 
 
+HTML_THREAD = """<html><head><title>test_client</title></head><body>
+<div class="pam _a6-g uiBoxWhite"><h2 class="_a6-h _a6-i">CATWALK</h2>
+<div class="_a6-p"><div>gamarjoba, 370 lari</div>
+<ul class="_a6-q"><li><span>reaction_should_be_ignored</span></li></ul></div>
+<div class="_a6-o">Aug 31, 2026 4:34 am</div></div>
+<div class="pam _a6-g uiBoxWhite"><h2 class="_a6-h _a6-i">test_client</h2>
+<div class="_a6-p"><div>Gamarjoba ra ghirs?</div></div>
+<div class="_a6-o">Aug 31, 2026 1:10 am</div></div>
+<div class="pam _a6-g uiBoxWhite"><h2 class="_a6-h _a6-i">test_client</h2>
+<div class="_a6-p"><div>Liked a message</div></div>
+<div class="_a6-o">Aug 31, 2026 1:36 am</div></div>
+</body></html>"""
+
+
+class TestHtmlExport(unittest.TestCase):
+    """The HTML flavour of the export, which is what Instagram actually sent."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        thread_dir = self.root / "inbox" / "test_client_123"
+        thread_dir.mkdir(parents=True)
+        (thread_dir / "message_1.html").write_text(HTML_THREAD, encoding="utf-8")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_parses_messages_and_skips_system_rows(self):
+        threads = load_export(self.root)
+        self.assertEqual(len(threads), 1)
+        # "Liked a message" is a reaction row, not a message.
+        self.assertEqual(len(threads[0].messages), 2)
+
+    def test_reactions_are_not_message_text(self):
+        threads = load_export(self.root)
+        self.assertNotIn("reaction_should_be_ignored", threads[0].text)
+
+    def test_messages_ordered_oldest_first(self):
+        t = load_export(self.root)[0]
+        self.assertEqual(t.messages[0].text, "Gamarjoba ra ghirs?")
+
+    def test_owner_is_the_side_that_is_not_the_thread_title(self):
+        t = load_export(self.root)[0]
+        self.assertEqual(t.owner, "CATWALK")
+        self.assertEqual(len(t.by_client()), 1)
+
+    def test_latin_script_georgian_is_recognised(self):
+        # Clients type Georgian in Latin letters; the signals must catch it.
+        self.assertTrue(signals.is_question("Gamarjoba shox r4 ebi ra ghirs?"))
+        self.assertIn("awaiting_payment", signals.stage_hits("chavricxe tanxa"))
+        self.assertIn("arrived", signals.stage_hits("rodis chamova?"))
+        self.assertEqual(signals.cancel_reason("dzviria, gadavipiqre"), "გადაიფიქრა")
+
+
 class TestEmptyExport(unittest.TestCase):
     def test_empty_directory_yields_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:

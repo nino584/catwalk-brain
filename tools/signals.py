@@ -14,27 +14,73 @@ SIZE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Clients routinely type Georgian in Latin letters ("ra ghirs", "zoma"), and
+# transliteration is not standardised -- kh/x for xe, ts/c for ce, ch/tch.
+# Every stem list below therefore carries both scripts and the common spellings.
+#
 # Keyword -> the order lifecycle stage it hints at. Georgian is agglutinative,
 # so these are stems matched anywhere in the word.
 STAGE_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "to_order": ("გამოსაწერ", "შეკვეთ", "მინდა", "ვიყიდ"),
-    "ordered": ("გამოვწერ", "გამოწერილ", "შევუკვეთ"),
-    "arrived": ("ჩამოვიდა", "ჩამოსვლ", "წონა"),
-    "awaiting_payment": ("ჩარიცხ", "ჩავრიცხ", "გადავრიცხ", "თანხ"),
-    "to_ship": ("ტრეკინგ", "გასაგზავნ", "გამოგზავნ", "კურიერ"),
-    "done": ("მადლობა", "მივიღე", "გილოცავ"),
-    "cancelled": ("გაუქმ", "გადავიფიქრ", "აღარ მინდა", "აღარ იყო"),
+    "to_order": (
+        "გამოსაწერ", "შეკვეთ", "მინდა", "ვიყიდ",
+        "shekvet", "minda", "viyid", "shekveta",
+    ),
+    "ordered": (
+        "გამოვწერ", "გამოწერილ", "შევუკვეთ",
+        "gamovwer", "gamower", "shevukvet",
+    ),
+    "arrived": (
+        "ჩამოვიდა", "ჩამოსვლ", "წონა",
+        "chamovida", "chamosvl", "chamova", "wona", "tsona",
+    ),
+    "awaiting_payment": (
+        "ჩარიცხ", "ჩავრიცხ", "გადავრიცხ", "თანხ", "გადავიხად",
+        "charicx", "chavricx", "charickh", "chavrickh", "gadavricx",
+        "tanx", "tankh", "gadaxda", "gadakhda",
+    ),
+    "to_ship": (
+        "ტრეკინგ", "გასაგზავნ", "გამოგზავნ", "კურიერ",
+        "treking", "tracking", "gamogzavn", "kurier", "courier",
+    ),
+    "done": (
+        "მადლობა", "მივიღე", "გილოცავ",
+        "madloba", "mivighe", "mivige", "gilocav",
+    ),
+    "cancelled": (
+        "გაუქმ", "გადავიფიქრ", "აღარ მინდა", "აღარ იყო",
+        "gaukm", "gadavipiqr", "gadavifiqr", "aghar minda", "agar minda",
+    ),
 }
 
 CANCEL_REASONS: dict[str, tuple[str, ...]] = {
-    "ზომა აღარ იყო": ("ზომა აღარ", "ზომა არ არის", "ზომა გათავდა"),
-    "ნივთი აღარ იყო": ("ნივთი აღარ", "აღარ არის", "sold out", "გაიყიდა"),
-    "გაიწელა": ("გაიწელ", "დაგვიანდ", "ვადა გავიდა"),
-    "გადაიფიქრა": ("გადავიფიქრ", "აღარ მინდა"),
-    "ფასი": ("ძვირი", "ფასი მაღალ", "იაფად"),
+    "ზომა აღარ იყო": (
+        "ზომა აღარ", "ზომა არ არის", "ზომა გათავდა",
+        "zoma aghar", "zoma agar", "zoma ar aris",
+    ),
+    "ნივთი აღარ იყო": (
+        "ნივთი აღარ", "აღარ არის", "sold out", "გაიყიდა",
+        "nivti aghar", "nivti agar", "gaiyida",
+    ),
+    "გაიწელა": (
+        "გაიწელ", "დაგვიანდ", "ვადა გავიდა",
+        "gaiwel", "gaitsel", "dagviand",
+    ),
+    "გადაიფიქრა": (
+        "გადავიფიქრ", "აღარ მინდა",
+        "gadavipiqr", "gadavifiqr", "aghar minda", "agar minda",
+    ),
+    "ფასი": (
+        "ძვირი", "ფასი მაღალ", "იაფად",
+        "dzviri", "zviri", "iapad", "iafad",
+    ),
 }
 
-QUESTION_MARKS = ("?", "თუ ", "რამდენ", "როდის", "რა ღირს", "როგორ", "სად ")
+QUESTION_MARKS = (
+    "?",
+    "თუ ", "რამდენ", "როდის", "რა ღირს", "როგორ", "სად ", "აქვს", "არის ",
+    "tu ", "ramden", "rodis", "ra ghirs", "ra girs", "rogor", "sad ",
+    "gaqvt", "aqvt", "aris ", "ras ",
+)
 
 
 def find_phones(text: str) -> list[str]:

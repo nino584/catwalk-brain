@@ -123,24 +123,70 @@ def load_thread(path: Path, owner: str = "") -> Thread | None:
 
 
 def guess_owner(threads: list[Thread]) -> str:
-    """The account that owns the export is the one present in nearly every thread."""
+    """The account that owns the export appears in nearly every thread.
+
+    A thread is titled after the counterpart, so a sender matching its own
+    thread title is the client, never the owner. That rule alone settles a
+    single-thread export, where counting would be a coin flip.
+    """
     counts: dict[str, int] = {}
     for t in threads:
-        for name in set(m.sender for m in t.messages):
+        title = (t.title or "").strip()
+        for name in {m.sender for m in t.messages if m.sender}:
+            if name.strip() == title:
+                continue
             counts[name] = counts.get(name, 0) + 1
     if not counts:
         return ""
     return max(counts.items(), key=lambda kv: kv[1])[0]
 
 
+def load_thread_html(path: Path) -> Thread | None:
+    """Load one message_*.html page (the HTML flavour of the export)."""
+    from ig_html import parse_thread_html
+
+    parsed = parse_thread_html(path)
+    if not parsed:
+        return None
+
+    messages = [
+        Message(
+            sender=m["sender_name"],
+            timestamp_ms=m["timestamp_ms"],
+            text=m["content"],
+            links=m["links"],
+            has_media=m["has_media"],
+        )
+        for m in parsed["messages"]
+    ]
+    messages.sort(key=lambda m: m.timestamp_ms)
+    senders = sorted({m.sender for m in messages if m.sender})
+
+    return Thread(
+        thread_id=path.parent.name,
+        title=parsed["title"],
+        participants=senders,
+        messages=messages,
+        source=path,
+    )
+
+
 def load_export(root: Path) -> list[Thread]:
     """Find and load every conversation under an export directory.
 
-    Tolerates the several layouts Instagram has shipped (``messages/inbox/``,
-    ``your_instagram_activity/messages/inbox/``, or a bare folder of threads).
+    Handles both flavours Instagram ships -- JSON and HTML -- and the several
+    layouts (``messages/inbox/``, ``your_instagram_activity/messages/inbox/``,
+    or a bare folder of threads).
     """
-    files = sorted(p for p in root.rglob("message_*.json") if p.is_file())
-    threads = [t for t in (load_thread(p) for p in files) if t and t.messages]
+    threads: list[Thread] = []
+    for path in sorted(p for p in root.rglob("message_*.json") if p.is_file()):
+        t = load_thread(path)
+        if t and t.messages:
+            threads.append(t)
+    for path in sorted(p for p in root.rglob("message_*.html") if p.is_file()):
+        t = load_thread_html(path)
+        if t and t.messages:
+            threads.append(t)
 
     # Threads split across message_1.json, message_2.json ... belong together.
     merged: dict[str, Thread] = {}
