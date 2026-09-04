@@ -1,0 +1,126 @@
+"""Tests for the Instagram export pipeline. Run: python3 -m unittest discover tests"""
+
+from __future__ import annotations
+
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
+
+import brain_mine  # noqa: E402
+import e7_clients  # noqa: E402
+import e11_copilot  # noqa: E402
+import signals  # noqa: E402
+from ig_export import demojibake, load_export  # noqa: E402
+from make_fixture import build  # noqa: E402
+
+
+class TestDemojibake(unittest.TestCase):
+    def test_recovers_georgian(self):
+        real = "გამარჯობა, ეს კაბა თუ არის M ზომაში?"
+        broken = real.encode("utf-8").decode("latin-1")
+        self.assertNotEqual(broken, real)
+        self.assertEqual(demojibake(broken), real)
+
+    def test_leaves_clean_text_alone(self):
+        self.assertEqual(demojibake("hello"), "hello")
+        self.assertEqual(demojibake(""), "")
+
+
+class TestSignals(unittest.TestCase):
+    def test_phone_formats(self):
+        self.assertEqual(signals.find_phones("ნომერი 555123456"), ["555123456"])
+        self.assertEqual(signals.find_phones("+995 599 12-34-56"), ["599123456"])
+        self.assertEqual(signals.find_phones("577 12 34 56"), ["577123456"])
+
+    def test_phone_false_positives(self):
+        self.assertEqual(signals.find_phones("ტრეკინგი GE123456789DE"), [])
+        self.assertEqual(signals.find_phones("ფასი 320 ლარი"), [])
+        self.assertEqual(signals.find_phones("კოდი 5551234567"), [])
+
+    def test_sizes(self):
+        self.assertIn("M", signals.find_sizes("M ზომა მინდა"))
+        self.assertIn("38", signals.find_sizes("38 ზომა"))
+
+    def test_stages_and_cancel(self):
+        self.assertIn("awaiting_payment", signals.stage_hits("ჩავრიცხე თანხა"))
+        self.assertEqual(signals.cancel_reason("ძვირია, გადავიფიქრე"), "გადაიფიქრა")
+        self.assertIsNone(signals.cancel_reason("მადლობა"))
+
+
+class TestPipeline(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.root = Path(cls._tmp.name)
+        build(cls.root / "export", thread_count=40)
+        cls.threads = load_export(cls.root / "export")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_loads_every_thread(self):
+        self.assertEqual(len(self.threads), 40)
+        self.assertTrue(all(t.messages for t in self.threads))
+
+    def test_owner_detected_and_sides_split(self):
+        t = self.threads[0]
+        self.assertEqual(t.owner, "Catwalk")
+        self.assertTrue(t.by_client())
+        self.assertTrue(t.by_owner())
+        self.assertEqual(len(t.by_client()) + len(t.by_owner()), len(t.messages))
+
+    def test_messages_sorted_oldest_first(self):
+        for t in self.threads:
+            stamps = [m.timestamp_ms for m in t.messages]
+            self.assertEqual(stamps, sorted(stamps))
+
+    def test_e7_one_row_per_client(self):
+        rows = e7_clients.build_rows(self.threads)
+        self.assertEqual(len(rows), 40)
+        self.assertEqual(len({r["ig_username"] for r in rows}), 40)
+        self.assertEqual(set(rows[0]), set(e7_clients.FIELDS))
+        out = e7_clients.write(rows, self.root / "out" / "clients.csv")
+        self.assertTrue(out.exists())
+
+    def test_e11_selects_twenty_across_categories(self):
+        selected = e11_copilot.select(self.threads)
+        self.assertEqual(len(selected), 20)
+        self.assertEqual(len({t.thread_id for _c, t in selected}), 20)
+        self.assertGreaterEqual(len({c for c, _t in selected}), 2)
+        index = e11_copilot.write(selected, self.root / "out" / "copilot")
+        self.assertTrue(index.exists())
+        self.assertEqual(len(list(index.parent.glob("chat-*.md"))), 20)
+
+    def test_e11_respects_smaller_corpus(self):
+        selected = e11_copilot.select(self.threads[:5])
+        self.assertLessEqual(len(selected), 5)
+
+    def test_brain_templatizes_variables(self):
+        self.assertEqual(
+            brain_mine.templatize("ტრეკინგი: GE123456789DE"), "ტრეკინგი: {ტრეკინგი}"
+        )
+        self.assertIn("{თანხა}", brain_mine.templatize("ჯამში 320 ლარი"))
+
+    def test_brain_finds_repeats(self):
+        mined = brain_mine.mine(self.threads)
+        self.assertTrue(mined["questions"])
+        self.assertTrue(mined["answers"])
+        self.assertTrue(all(n >= brain_mine.MIN_REPEATS for _k, n, _s in mined["answers"]))
+        out = brain_mine.write(mined, len(self.threads), self.root / "out" / "brain.md")
+        self.assertTrue(out.exists())
+
+
+class TestEmptyExport(unittest.TestCase):
+    def test_empty_directory_yields_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(load_export(Path(tmp)), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
