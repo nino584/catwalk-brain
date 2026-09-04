@@ -15,6 +15,12 @@ from signals import cancel_reason, is_question, looks_like_order, stage_hits
 
 TARGET = 20
 
+# Two sellers have to read each chat and answer "would I have sent this?".
+# A 1200-message thread is a colleague or a years-long regular, not a test
+# item, and a three-line thread shows the Copilot nothing.
+MIN_MESSAGES = 6
+MAX_MESSAGES = 60
+
 
 def classify(t: Thread) -> str:
     text = t.text
@@ -41,12 +47,20 @@ def score(t: Thread) -> float:
     return turns * 2 + stages * 3 + questions + recency
 
 
+def readable(t: Thread) -> bool:
+    return MIN_MESSAGES <= len(t.messages) <= MAX_MESSAGES
+
+
 def select(threads: list[Thread], target: int = TARGET) -> list[tuple[str, Thread]]:
     """Round-robin across categories so no single kind of chat dominates."""
+    usable = [t for t in threads if score(t) > 0]
+    # Prefer chats a seller can actually read; fall back only if too few.
+    sized = [t for t in usable if readable(t)]
+    if len(sized) >= target:
+        usable = sized
+
     buckets: dict[str, list[Thread]] = {}
-    for t in threads:
-        if score(t) <= 0:
-            continue
+    for t in usable:
         buckets.setdefault(classify(t), []).append(t)
     for items in buckets.values():
         items.sort(key=score, reverse=True)

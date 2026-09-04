@@ -25,6 +25,8 @@ FIELDS = [
     "phones",
     "sizes",
     "item_links",
+    "links_count",
+    "order_months",
     "stages_seen",
     "cancel_reason",
     "looks_like_order",
@@ -32,13 +34,35 @@ FIELDS = [
 ]
 
 
-def _segment_hint(order_like_threads: int, msgs: int) -> str:
+# Messages that mark an order actually landing, as opposed to being discussed.
+FULFILMENT_STAGES = ("arrived", "awaiting_payment", "to_ship")
+
+
+def order_months(thread) -> set[tuple[int, int]]:
+    """The distinct (year, month) pairs carrying a fulfilment message.
+
+    On Instagram a client has one thread forever, so repeat purchases sit
+    inside it rather than in a second thread. Counting threads would put every
+    client at one order; counting the months in which an order actually landed
+    separates the repeat buyer from the one-off.
+    """
+    months = set()
+    for m in thread.by_owner():
+        if not m.text:
+            continue
+        hits = stage_hits(m.text)
+        if any(stage in hits for stage in FULFILMENT_STAGES):
+            months.add((m.at.year, m.at.month))
+    return months
+
+
+def _segment_hint(months: int, links: int, msgs: int) -> str:
     """Rough pre-segment; the real segment is computed from GMV after migration."""
-    if order_like_threads >= 2:
+    if months >= 2:
         return "განმეორებითი"
-    if order_like_threads == 1:
+    if months == 1:
         return "მყიდველი"
-    if msgs >= 4:
+    if links or msgs >= 4:
         return "დაინტერესებული"
     return "შემხებლობა"
 
@@ -52,6 +76,10 @@ def build_rows(threads: list[Thread]) -> list[dict]:
         if len(names) != 1:
             continue
         name = names[0]
+        # Key on the conversation, not the display name -- distinct people
+        # share names like "." or "...", and merging them invents a client
+        # with more order months than the export even covers.
+        key = t.thread_id or name
 
         client_msgs = t.by_client()
         owner_msgs = t.by_owner()
@@ -61,7 +89,7 @@ def build_rows(threads: list[Thread]) -> list[dict]:
         is_order = looks_like_order(text)
 
         row = by_client.setdefault(
-            name,
+            key,
             {
                 "ig_username": name,
                 "thread_title": t.title,
@@ -76,6 +104,7 @@ def build_rows(threads: list[Thread]) -> list[dict]:
                 "_stages": set(),
                 "cancel_reason": "",
                 "_order_threads": 0,
+                "_months": set(),
             },
         )
 
@@ -93,6 +122,7 @@ def build_rows(threads: list[Thread]) -> list[dict]:
         row["_links"].update(links)
         row["_stages"].update(stages)
         row["_order_threads"] += 1 if is_order else 0
+        row["_months"].update(order_months(t))
         row["cancel_reason"] = row["cancel_reason"] or (cancel_reason(text) or "")
 
     rows = []
@@ -111,10 +141,14 @@ def build_rows(threads: list[Thread]) -> list[dict]:
                 "phones": ";".join(sorted(row["_phones"])),
                 "sizes": ";".join(sorted(row["_sizes"])),
                 "item_links": ";".join(sorted(row["_links"])),
+                "links_count": len(row["_links"]),
+                "order_months": len(row["_months"]),
                 "stages_seen": ";".join(sorted(row["_stages"])),
                 "cancel_reason": row["cancel_reason"],
                 "looks_like_order": "yes" if row["_order_threads"] else "no",
-                "segment_hint": _segment_hint(row["_order_threads"], row["messages_total"]),
+                "segment_hint": _segment_hint(
+                    len(row["_months"]), len(row["_links"]), row["messages_total"]
+                ),
             }
         )
 

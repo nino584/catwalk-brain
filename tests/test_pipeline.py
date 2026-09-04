@@ -97,6 +97,28 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(index.exists())
         self.assertEqual(len(list(index.parent.glob("chat-*.md"))), 20)
 
+    def test_e11_prefers_readable_chats(self):
+        # A seller has to read each one; a 1200-message thread is not a test item.
+        selected = e11_copilot.select(self.threads)
+        for _category, t in selected:
+            self.assertLessEqual(len(t.messages), e11_copilot.MAX_MESSAGES)
+
+    def test_e7_repeat_buyer_needs_two_order_months(self):
+        # One client has one Instagram thread forever, so repeat purchases sit
+        # inside it: months, not threads, separate the repeat buyer.
+        rows = {r["ig_username"]: r for r in e7_clients.build_rows(self.threads)}
+        for row in rows.values():
+            if row["segment_hint"] == "განმეორებითი":
+                self.assertGreaterEqual(int(row["order_months"]), 2)
+            elif row["segment_hint"] == "მყიდველი":
+                self.assertEqual(int(row["order_months"]), 1)
+
+    def test_e7_rows_are_per_conversation(self):
+        # Distinct people share display names like "." -- grouping by name
+        # would merge them into one impossible client.
+        rows = e7_clients.build_rows(self.threads)
+        self.assertEqual(len(rows), len(self.threads))
+
     def test_e11_respects_smaller_corpus(self):
         selected = e11_copilot.select(self.threads[:5])
         self.assertLessEqual(len(selected), 5)
