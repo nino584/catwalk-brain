@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import brain_mine
 import e7_clients
 import e11_copilot
+import taste_signals
 from ig_export import load_export
 
 
@@ -58,6 +59,11 @@ def main(argv: list[str] | None = None) -> int:
     brain_path = brain_mine.write(mined, len(threads), args.out / "brain-candidates.md")
     print(f"Brain → {brain_path} · {len(mined['questions'])} კითხვა, "
           f"{len(mined['answers'])} შაბლონი")
+
+    items = taste_signals.analyse(threads)
+    story_path = taste_signals.write(items, args.out / "story-demand.csv")
+    asked = sum(1 for it in items.values() if it["asks"])
+    print(f"Taste → {story_path} · {asked} ნივთი (სთორი)")
 
     print("\nყველა შედეგი data/-შია და git-ში არ ადის.")
     return 0

@@ -15,6 +15,7 @@ import brain_mine  # noqa: E402
 import e7_clients  # noqa: E402
 import e11_copilot  # noqa: E402
 import signals  # noqa: E402
+import taste_signals  # noqa: E402
 from ig_export import demojibake, load_export  # noqa: E402
 from make_fixture import build  # noqa: E402
 
@@ -196,6 +197,38 @@ class TestHtmlExport(unittest.TestCase):
         self.assertIn("awaiting_payment", signals.stage_hits("chavricxe tanxa"))
         self.assertIn("arrived", signals.stage_hits("rodis chamova?"))
         self.assertEqual(signals.cancel_reason("dzviria, gadavipiqre"), "გადაიფიქრა")
+
+
+class TestTasteSignals(unittest.TestCase):
+    """Story mentions are the only item id the DM history carries."""
+
+    def _thread(self, texts):
+        from ig_export import Message, Thread
+        msgs = [Message(sender=s, timestamp_ms=1_750_000_000_000 + i * 60_000, text=x)
+                for i, (s, x) in enumerate(texts)]
+        return Thread(thread_id="t1", title="client", participants=["client", "CATWALK"],
+                      messages=msgs, source=Path("x"), owner="CATWALK")
+
+    def test_counts_ask_and_conversion(self):
+        t = self._thread([
+            ("client", "ra ghirs? https://www.instagram.com/stories/catwalk.ge/111"),
+            ("CATWALK", "370 ლარი"),
+            ("client", "minda"),
+            ("CATWALK", "ნივთი ჩამოვიდა, ჩაირიცხოს თანხა"),
+        ])
+        items = taste_signals.analyse([t])
+        self.assertIn("111", items)
+        self.assertEqual(items["111"]["asks"], 1)
+        self.assertEqual(items["111"]["converted"], 1)
+
+    def test_weight_fee_is_not_the_item_price(self):
+        t = self._thread([
+            ("client", "https://www.instagram.com/stories/catwalk.ge/222"),
+            ("CATWALK", "წონის ტარიფი 26 ლარი"),
+            ("CATWALK", "კაბის ფასია 319 ლარი"),
+        ])
+        items = taste_signals.analyse([t])
+        self.assertEqual(items["222"]["prices"], [319])
 
 
 class TestEmptyExport(unittest.TestCase):
