@@ -157,6 +157,10 @@ HTML_THREAD = """<html><head><title>test_client</title></head><body>
 <div class="pam _a6-g uiBoxWhite"><h2 class="_a6-h _a6-i">test_client</h2>
 <div class="_a6-p"><div>Liked a message</div></div>
 <div class="_a6-o">Aug 31, 2026 1:36 am</div></div>
+<div class="pam _a6-g uiBoxWhite"><h2 class="_a6-h _a6-i">CATWALK</h2>
+<div class="_a6-p"><div><a href="your_instagram_activity/messages/inbox/test_client_123/photos/9.jpg">
+<img src="your_instagram_activity/messages/inbox/test_client_123/photos/9.jpg" /></a></div></div>
+<div class="_a6-o">Aug 31, 2026 2:00 am</div></div>
 </body></html>"""
 
 
@@ -176,8 +180,8 @@ class TestHtmlExport(unittest.TestCase):
     def test_parses_messages_and_skips_system_rows(self):
         threads = load_export(self.root)
         self.assertEqual(len(threads), 1)
-        # "Liked a message" is a reaction row, not a message.
-        self.assertEqual(len(threads[0].messages), 2)
+        # "Liked a message" is a reaction row, not a message; the photo card is.
+        self.assertEqual(len(threads[0].messages), 3)
 
     def test_reactions_are_not_message_text(self):
         threads = load_export(self.root)
@@ -191,6 +195,16 @@ class TestHtmlExport(unittest.TestCase):
         t = load_export(self.root)[0]
         self.assertEqual(t.owner, "CATWALK")
         self.assertEqual(len(t.by_client()), 1)
+
+    def test_photo_paths_are_kept(self):
+        # The export's own photo files are the only product images we have,
+        # so the path has to survive parsing, not just a has_media flag.
+        t = load_export(self.root)[0]
+        shots = [m for m in t.messages if m.photos]
+        self.assertEqual(len(shots), 1)
+        self.assertTrue(shots[0].has_media)
+        self.assertEqual(shots[0].photos,
+                         ["your_instagram_activity/messages/inbox/test_client_123/photos/9.jpg"])
 
     def test_latin_script_georgian_is_recognised(self):
         # Clients type Georgian in Latin letters; the signals must catch it.

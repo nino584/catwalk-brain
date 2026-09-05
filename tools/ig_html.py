@@ -69,7 +69,8 @@ class _ThreadParser(HTMLParser):
 
     # -- helpers -------------------------------------------------------
     def _start_card(self) -> None:
-        self._card = {"sender": "", "text": [], "time": "", "links": [], "media": False}
+        self._card = {"sender": "", "text": [], "time": "", "links": [],
+                      "media": False, "photos": []}
 
     def _finish_card(self) -> None:
         card = self._card
@@ -106,6 +107,8 @@ class _ThreadParser(HTMLParser):
             for name, value in attrs:
                 if name == "src" and value and "/photos/" in value:
                     self._card["media"] = True
+                    if value not in self._card["photos"]:
+                        self._card["photos"].append(value)
         elif tag == "a":
             for name, value in attrs:
                 if name != "href" or not value:
@@ -114,6 +117,8 @@ class _ThreadParser(HTMLParser):
                     self._card["links"].append(value)
                 elif "/photos/" in value or "/videos/" in value:
                     self._card["media"] = True
+                    if "/photos/" in value and value not in self._card["photos"]:
+                        self._card["photos"].append(value)
 
     def handle_endtag(self, tag):
         if tag == "title":
@@ -178,6 +183,7 @@ def parse_thread_html(path: Path) -> dict | None:
                 "content": text,
                 "links": links,
                 "has_media": card["media"],
+                "photos": card["photos"],
             }
         )
 

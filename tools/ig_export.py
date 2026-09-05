@@ -42,6 +42,7 @@ class Message:
     text: str
     links: list[str] = field(default_factory=list)
     has_media: bool = False
+    photos: list[str] = field(default_factory=list)
 
     @property
     def at(self) -> datetime:
@@ -156,6 +157,7 @@ def load_thread_html(path: Path) -> Thread | None:
             text=m["content"],
             links=m["links"],
             has_media=m["has_media"],
+            photos=m.get("photos", []),
         )
         for m in parsed["messages"]
     ]
