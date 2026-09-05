@@ -16,6 +16,7 @@ import e7_clients  # noqa: E402
 import e11_copilot  # noqa: E402
 import signals  # noqa: E402
 import taste_signals  # noqa: E402
+import build_taste_test  # noqa: E402
 from ig_export import demojibake, load_export  # noqa: E402
 from make_fixture import build  # noqa: E402
 
@@ -229,6 +230,51 @@ class TestTasteSignals(unittest.TestCase):
         ])
         items = taste_signals.analyse([t])
         self.assertEqual(items["222"]["prices"], [319])
+
+
+class TestBuildTasteTest(unittest.TestCase):
+    """The 100-item test must stay balanced and free of duplicates."""
+
+    def test_brand_extraction(self):
+        self.assertEqual(build_taste_test.brand_of("sandro black bag"), "sandro")
+        self.assertEqual(build_taste_test.brand_of("უცნობი ნივთი"), "")
+
+    def test_core_spreads_across_brands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sheet = Path(tmp) / "s.csv"
+            import csv as _csv
+            with sheet.open("w", encoding="utf-8", newline="") as fh:
+                w = _csv.DictWriter(fh, fieldnames=["", "ნივთი", "ზომა", "ლინკი",
+                                                    "გასაყიდი ₾", "Markup %", "ბრენდი"])
+                w.writeheader()
+                for i in range(20):
+                    w.writerow({"": "✅ დასრულდა", "ნივთი": f"sandro bag {i}", "ზომა": "s",
+                                "ლინკი": "http://x", "გასაყიდი ₾": 100 + i,
+                                "Markup %": "50", "ბრენდი": "Catwalk"})
+                for i in range(20):
+                    w.writerow({"": "✅ დასრულდა", "ნივთი": f"nike shoes {i}", "ზომა": "40",
+                                "ლინკი": "http://y", "გასაყიდი ₾": 200 + i,
+                                "Markup %": "60", "ბრენდი": "Catwalk Men"})
+            rows = build_taste_test.core_rows(sheet, 10)
+            self.assertEqual(len(rows), 10)
+            self.assertEqual(len({r["name"] for r in rows}), 10)
+            # Both brands present, not ten of one.
+            self.assertGreaterEqual(len({r["label"] for r in rows}), 2)
+
+    def test_cancelled_orders_are_not_evidence_of_taste(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sheet = Path(tmp) / "s.csv"
+            import csv as _csv
+            with sheet.open("w", encoding="utf-8", newline="") as fh:
+                w = _csv.DictWriter(fh, fieldnames=["", "ნივთი", "ლინკი",
+                                                    "გასაყიდი ₾", "Markup %", "ბრენდი"])
+                w.writeheader()
+                w.writerow({"": "⛔ გაუქმდა", "ნივთი": "gucci bag", "ლინკი": "http://x",
+                            "გასაყიდი ₾": "500", "Markup %": "50", "ბრენდი": "Catwalk"})
+                w.writerow({"": "✅ დასრულდა", "ნივთი": "prada bag", "ლინკი": "http://y",
+                            "გასაყიდი ₾": "500", "Markup %": "50", "ბრენდი": "Catwalk"})
+            rows = build_taste_test.core_rows(sheet, 10)
+            self.assertEqual([r["label"] for r in rows], ["prada"])
 
 
 class TestEmptyExport(unittest.TestCase):
