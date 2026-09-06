@@ -17,6 +17,7 @@ import e11_copilot  # noqa: E402
 import signals  # noqa: E402
 import taste_signals  # noqa: E402
 import build_taste_test  # noqa: E402
+import build_photo_test  # noqa: E402
 from ig_export import demojibake, load_export  # noqa: E402
 from make_fixture import build  # noqa: E402
 
@@ -289,6 +290,59 @@ class TestBuildTasteTest(unittest.TestCase):
                             "გასაყიდი ₾": "500", "Markup %": "50", "ბრენდი": "Catwalk"})
             rows = build_taste_test.core_rows(sheet, 10)
             self.assertEqual([r["label"] for r in rows], ["prada"])
+
+
+class TestPhotoTest(unittest.TestCase):
+    """The photo cards are the only ones carrying a real picture and price."""
+
+    def _thread(self, rows):
+        from ig_export import Message, Thread
+        msgs = []
+        for i, (sender, text, photos) in enumerate(rows):
+            msgs.append(Message(sender=sender, timestamp_ms=1_750_000_000_000 + i * 60_000,
+                                text=text, photos=photos or [],
+                                has_media=bool(photos)))
+        return Thread(thread_id="t1", title="client", participants=["client", "CATWALK"],
+                      messages=msgs, source=Path("x"), owner="CATWALK")
+
+    def test_candidate_needs_a_photo_and_a_price(self):
+        t = self._thread([
+            ("CATWALK", "", ["inbox/a/photos/1.jpg"]),
+            ("CATWALK", "370 ლარი", None),
+            ("CATWALK", "ნივთი ჩამოვიდა", None),
+        ])
+        got = build_photo_test.candidates([t])
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0]["price"], 370)
+        self.assertTrue(got[0]["sold"])
+
+    def test_weight_fee_is_not_an_item_price(self):
+        t = self._thread([
+            ("CATWALK", "", ["inbox/a/photos/2.jpg"]),
+            ("CATWALK", "წონა 26 ლარი", None),
+        ])
+        self.assertEqual(build_photo_test.candidates([t]), [])
+
+    def test_client_photos_are_not_candidates(self):
+        t = self._thread([
+            ("client", "", ["inbox/a/photos/3.jpg"]),
+            ("CATWALK", "370 ლარი", None),
+        ])
+        self.assertEqual(build_photo_test.candidates([t]), [])
+
+    def test_cards_never_carry_the_outcome(self):
+        cards = [{"i": 1, "p": 370, "d": "2026-08-01", "img": "data:,x", "sold": True}]
+        out = build_photo_test.public(cards)
+        self.assertNotIn("sold", out[0])
+        self.assertEqual(set(out[0]), {"i", "p", "d", "img"})
+
+    def test_zip_command_names_every_photo(self):
+        picked = [{"photo": "inbox/a/photos/1.jpg", "id": 1},
+                  {"photo": "inbox/b/photos/2.jpg", "id": 2}]
+        cmd = build_photo_test.zip_command(picked)
+        self.assertIn("inbox/a/photos/1.jpg", cmd)
+        self.assertIn("inbox/b/photos/2.jpg", cmd)
+        self.assertEqual(cmd.count("\n"), 0)   # one line: a pasted block loses its last Enter
 
 
 class TestEmptyExport(unittest.TestCase):
